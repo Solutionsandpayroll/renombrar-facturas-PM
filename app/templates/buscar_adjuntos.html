@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo de Renombrar Factura</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800;900&display=swap');
+
+  :root{
+    --azul-oscuro:#162b47;
+    --azul-medio:#105788;
+    --rojo:#e51148;
+    --verde:#0f9d58;
+    --gris:#e0e5e5;
+    --blanco:#ffffff;
+    --negro:#000000;
+    --azul-oscuro-80: rgba(22,43,71,.85);
+    --sombra: 0 20px 50px rgba(22,43,71,.18);
+  }
+
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    font-family:'Nunito Sans', 'Calibri', sans-serif;
+    background:
+      radial-gradient(circle at 85% -6%, rgba(16,87,136,.06), transparent 40%),
+      radial-gradient(circle at -5% 110%, rgba(229,17,72,.04), transparent 35%),
+      var(--blanco);
+    min-height:100vh;
+    color:var(--azul-oscuro);
+  }
+
+  /* ---------- HEADER ---------- */
+  header.brand-header{
+    background:var(--azul-oscuro);
+    border-bottom:4px solid var(--rojo);
+    padding:22px 40px;
+    display:flex;
+    align-items:center;
+    gap:16px;
+  }
+  .brand-mark{
+    width:44px;height:44px;
+    border-radius:10px;
+    background:linear-gradient(135deg, var(--azul-medio), var(--rojo));
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .brand-mark svg{width:24px;height:24px;stroke:var(--blanco);}
+  header.brand-header h1{
+    color:var(--blanco);
+    font-size:22px;
+    font-weight:800;
+    letter-spacing:.3px;
+    margin:0;
+    line-height:1.15;
+  }
+  header.brand-header span{
+    display:block;
+    color:var(--gris);
+    font-size:12.5px;
+    font-weight:600;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    opacity:.8;
+  }
+
+  /* ---------- LAYOUT ---------- */
+  main{
+    max-width:960px;
+    margin:0 auto;
+    padding:48px 24px 100px;
+  }
+
+  .step-card{
+    background:var(--blanco);
+    border-radius:16px;
+    box-shadow:0 4px 18px rgba(22,43,71,.08);
+    padding:32px 36px;
+    margin-bottom:28px;
+    position:relative;
+    border:1px solid var(--gris);
+  }
+
+  .step-eyebrow{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .step-eyebrow .icon-badge{
+    width:34px;height:34px;
+    border-radius:9px;
+    background:var(--azul-medio);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .step-eyebrow .icon-badge svg{width:18px;height:18px;stroke:var(--blanco);fill:none;}
+  .step-eyebrow h2{
+    font-size:17px;
+    font-weight:800;
+    margin:0;
+    color:var(--azul-oscuro);
+  }
+  .step-eyebrow p{
+    margin:2px 0 0;
+    font-size:13px;
+    color:var(--azul-medio);
+    font-weight:600;
+  }
+
+  /* ---------- FORM ELEMENTS ---------- */
+  .field-row{
+    display:flex;
+    gap:12px;
+    align-items:stretch;
+  }
+  input[type="text"], select{
+    flex:1;
+    padding:13px 16px;
+    border-radius:10px;
+    border:1.5px solid var(--gris);
+    font-family:inherit;
+    font-size:14.5px;
+    font-weight:600;
+    color:var(--azul-oscuro);
+    background:var(--blanco);
+    transition:border-color .15s ease, box-shadow .15s ease;
+  }
+  input[type="text"]:focus, select:focus{
+    outline:none;
+    border-color:var(--azul-medio);
+    box-shadow:0 0 0 4px rgba(16,87,136,.12);
+  }
+  input[type="text"]::placeholder{color:#9aa5b1;font-weight:500;}
+
+  button{
+    font-family:inherit;
+    font-weight:800;
+    font-size:14px;
+    border:none;
+    border-radius:10px;
+    padding:13px 22px;
+    cursor:pointer;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    transition:transform .12s ease, box-shadow .12s ease, background .15s ease;
+    white-space:nowrap;
+  }
+  button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.4;}
+  button:active{transform:scale(.97);}
+  button:disabled{
+    opacity:.45;
+    cursor:not-allowed;
+  }
+
+  .btn-primary{
+    background:var(--azul-medio);
+    color:var(--blanco);
+  }
+  .btn-primary:hover:not(:disabled){
+    background:var(--azul-oscuro);
+    box-shadow:0 8px 18px rgba(16,87,136,.35);
+  }
+
+  .btn-accent{
+    background:var(--rojo);
+    color:var(--blanco);
+  }
+  .btn-accent:hover:not(:disabled){
+    background:#c40e3d;
+    box-shadow:0 8px 18px rgba(229,17,72,.35);
+  }
+
+  /* ---------- STATUS BADGES ---------- */
+  .status-ok{
+    margin-top:16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:rgba(16,87,136,.07);
+    border:1px solid rgba(16,87,136,.25);
+    color:var(--azul-medio);
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:13.5px;
+    font-weight:700;
+  }
+  .status-ok svg{width:18px;height:18px;stroke:var(--azul-medio);fill:none;stroke-width:2.4;flex-shrink:0;}
+
+  .status-error{
+    margin-top:16px;
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    background:rgba(229,17,72,.06);
+    border:1px solid rgba(229,17,72,.3);
+    color:var(--rojo);
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:13.5px;
+    font-weight:700;
+  }
+  .status-error svg{width:18px;height:18px;stroke:var(--rojo);fill:none;stroke-width:2.4;flex-shrink:0;margin-top:1px;}
+
+  .status-pending{
+    margin-top:16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--gris);
+    color:var(--azul-oscuro);
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:700;
+    opacity:.85;
+  }
+  .status-pending svg{width:17px;height:17px;stroke:var(--azul-oscuro);fill:none;stroke-width:2.4;flex-shrink:0;}
+
+  /* ---------- FLOATING EXCEL LAUNCHER ---------- */
+  .float-launcher{
+    position:fixed;
+    bottom:34px;
+    right:34px;
+    z-index:40;
+    background:var(--rojo);
+    color:var(--blanco);
+    border:none;
+    border-radius:50px;
+    padding:16px 24px;
+    font-weight:800;
+    font-size:14.5px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    box-shadow:0 14px 30px rgba(229,17,72,.4);
+    cursor:pointer;
+    transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .float-launcher:hover{
+    transform:translateY(-3px);
+    box-shadow:0 18px 36px rgba(229,17,72,.5);
+  }
+  .float-launcher svg{width:19px;height:19px;stroke:var(--blanco);fill:none;stroke-width:2.4;}
+
+  /* ---------- MODAL ---------- */
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(22,43,71,.55);
+    backdrop-filter:blur(3px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:60;
+    padding:20px;
+  }
+  .modal-overlay.active{display:flex;}
+
+  .modal-panel{
+    background:var(--blanco);
+    border-radius:18px;
+    width:100%;
+    max-width:460px;
+    padding:34px 32px 30px;
+    box-shadow:0 30px 70px rgba(22,43,71,.4);
+    position:relative;
+    animation:modalIn .22s ease;
+  }
+  @keyframes modalIn{
+    from{opacity:0; transform:translateY(14px) scale(.97);}
+    to{opacity:1; transform:translateY(0) scale(1);}
+  }
+
+  .modal-close{
+    position:absolute;
+    top:18px;
+    right:18px;
+    background:var(--gris);
+    border:none;
+    width:32px;height:32px;
+    border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    padding:0;
+  }
+  .modal-close svg{width:15px;height:15px;stroke:var(--azul-oscuro);stroke-width:2.6;}
+  .modal-close:hover{background:#cfd7d7;}
+
+  .modal-header{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  .modal-header .icon-badge{
+    width:38px;height:38px;
+    border-radius:10px;
+    background:var(--rojo);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .modal-header .icon-badge svg{width:20px;height:20px;stroke:var(--blanco);fill:none;stroke-width:2.2;}
+  .modal-header h3{
+    margin:0;
+    font-size:18px;
+    font-weight:800;
+    color:var(--azul-oscuro);
+  }
+  .modal-sub{
+    font-size:13px;
+    color:#5c6b7a;
+    font-weight:600;
+    margin:0 0 22px;
+    line-height:1.5;
+  }
+
+  .dropzone{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    border:2px dashed var(--azul-medio);
+    border-radius:12px;
+    background:rgba(16,87,136,.04);
+    padding:34px 18px;
+    text-align:center;
+    cursor:pointer;
+    transition:background .15s ease, border-color .15s ease;
+    margin-bottom:18px;
+    width:100%;
+  }
+  .dropzone:hover, .dropzone.drag-over{
+    background:rgba(16,87,136,.09);
+    border-color:var(--rojo);
+  }
+  .dropzone svg{width:30px;height:30px;stroke:var(--azul-medio);fill:none;stroke-width:1.8;margin-bottom:8px;}
+  .dropzone p{
+    margin:0;
+    font-size:13.5px;
+    font-weight:700;
+    color:var(--azul-oscuro);
+  }
+  .dropzone span{
+    display:block;
+    font-size:12px;
+    color:#7a8794;
+    font-weight:600;
+    margin-top:3px;
+  }
+  .file-name-preview{
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--azul-medio);
+    margin-top:8px;
+    display:none;
+  }
+
+  .modal-panel button[type="submit"]{
+    width:100%;
+    justify-content:center;
+    padding:14px;
+  }
+
+  .loading-panel{
+    text-align:center;
+    max-width:380px;
+    padding:40px 32px;
+  }
+  .loading-panel h3{
+    margin:18px 0 6px;
+    font-size:17px;
+    font-weight:800;
+    color:var(--azul-oscuro);
+  }
+
+  .spinner{
+    width:52px;
+    height:52px;
+    margin:0 auto;
+    border-radius:50%;
+    border:5px solid var(--gris);
+    border-top-color:var(--rojo);
+    animation:girar .8s linear infinite;
+  }
+  @keyframes girar{
+    to{transform:rotate(360deg);}
+  }
+
+  .check-circle{
+    width:52px;
+    height:52px;
+    margin:0 auto;
+    border-radius:50%;
+    background:rgba(15,157,88,.12);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    animation:popIn .3s ease;
+  }
+  .check-circle svg{
+    width:26px;
+    height:26px;
+    stroke:var(--verde);
+    fill:none;
+    stroke-width:3;
+  }
+  @keyframes popIn{
+    from{transform:scale(.5); opacity:0;}
+    to{transform:scale(1); opacity:1;}
+  }
+
+  /* ---------- TABLE PREVIEW ---------- */
+  .tabla-wrap{
+    overflow-x:auto;
+    border-radius:10px;
+    border:1px solid var(--gris);
+    margin-top:16px;
+  }
+  table.preview{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  table.preview th{
+    background:var(--azul-oscuro);
+    color:var(--blanco);
+    text-align:left;
+    padding:10px 14px;
+    font-weight:700;
+    letter-spacing:.3px;
+    white-space:nowrap;
+  }
+  table.preview td{
+    padding:9px 14px;
+    border-top:1px solid var(--gris);
+    color:var(--azul-oscuro);
+    font-weight:600;
+  }
+  table.preview tr:hover td{background:rgba(16,87,136,.05);}
+
+  .badge-pdf{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:4px 10px;
+    border-radius:20px;
+    font-size:11.5px;
+    font-weight:800;
+  }
+  .badge-pdf.ok{background:rgba(15,157,88,.12); color:var(--verde);}
+  .badge-pdf.fail{background:rgba(229,17,72,.1); color:var(--rojo);}
+  .badge-pdf svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:3;}
+
+  .asunto-chip{
+    font-size:11.5px;
+    color:#5c6b7a;
+    font-weight:700;
+    background:var(--gris);
+    padding:3px 8px;
+    border-radius:6px;
+    display:inline-block;
+  }
+
+  footer.brand-footer{
+    text-align:center;
+    padding:24px;
+    color:var(--gris);
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:.4px;
+    opacity:.6;
+  }
+
+  @media (max-width:600px){
+    header.brand-header{padding:18px 20px;}
+    main{padding:32px 14px 100px;}
+    .step-card{padding:24px 20px;}
+    .field-row{flex-direction:column;}
+    .float-launcher{right:20px; bottom:20px; padding:14px 18px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand-header">
+  <div class="brand-mark">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <path d="M14 2v6h6"></path>
+    </svg>
+  </div>
+  <div>
+    <h1>Demo de Renombrar Factura</h1>
+    <span>Gestión documental automatizada</span>
+  </div>
+</header>
+
+<main>
+
+  {% if error %}
+  <section class="step-card">
+    <div class="status-error">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path>
+      </svg>
+      <span>{{ error }}</span>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if not filas %}
+  <section class="step-card">
+    <div class="step-eyebrow">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <path d="M14 2v6h6"></path>
+        </svg>
+      </div>
+      <div>
+        <h2>Comienza cargando el Excel</h2>
+        <p>Por cada fila se buscará el correo automáticamente usando NIT + Factura</p>
+      </div>
+    </div>
+    <div class="status-pending">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path>
+      </svg>
+      Usa el botón "Cargar Excel" en la esquina inferior derecha para empezar.
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- SELECCIONAR Y GENERAR -->
+  {% if filas %}
+  <section class="step-card">
+    <div class="step-eyebrow">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 11l3 3L22 4"></path>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+        </svg>
+      </div>
+      <div>
+        <h2>Generar ZIP final</h2>
+        <p>Se incluirán todos los PDFs encontrados, renombrados automáticamente</p>
+      </div>
+    </div>
+
+    <form method="post" action="{% url 'generar_reporte_final' %}" id="zipForm">
+      {% csrf_token %}
+      <button type="submit" class="btn-accent" {% if not pdf_listo %}disabled{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <path d="M7 10l5 5 5-5"></path>
+          <path d="M12 15V3"></path>
+        </svg>
+        Generar ZIP con todos los PDFs encontrados
+      </button>
+    </form>
+
+    {% if not pdf_listo %}
+    <div class="status-pending">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 3"></path>
+      </svg>
+      Ninguna fila tiene un PDF encontrado todavía.
+    </div>
+    {% endif %}
+
+    <div class="tabla-wrap">
+      <table class="preview">
+        <thead>
+          <tr>
+            <th>Documento</th>
+            <th>Factura</th>
+            <th>Nit Proveedor</th>
+            <th>Nombre Proveedor</th>
+            <th>PDF</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in filas %}
+          <tr>
+            <td>{{ f.documento }}</td>
+            <td>{{ f.factura }}</td>
+            <td>{{ f.nit_proveedor }}</td>
+            <td>{{ f.nombre_proveedor }}</td>
+            <td>
+              {% if f.pdf_encontrado %}
+              <span class="badge-pdf ok">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                Encontrado
+              </span>
+              {% else %}
+              <span class="badge-pdf fail" title="{{ f.error_busqueda }}">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="M6 6l12 12"></path></svg>
+                No encontrado
+              </span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+</main>
+
+<footer class="brand-footer">Sistema interno · Gestión de facturas</footer>
+
+<!-- BOTÓN FLOTANTE PARA ABRIR MODAL DE EXCEL -->
+<button class="float-launcher" onclick="document.getElementById('excelModal').classList.add('active')">
+  <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+    <path d="M14 2v6h6"></path>
+    <path d="M9 15h6"></path>
+    <path d="M9 11h6"></path>
+  </svg>
+  Cargar Excel
+</button>
+
+<!-- MODAL FLOTANTE -->
+<div class="modal-overlay" id="excelModal">
+  <div class="modal-panel">
+    <button class="modal-close" onclick="document.getElementById('excelModal').classList.remove('active')">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 6 6 18"></path><path d="M6 6l12 12"></path>
+      </svg>
+    </button>
+
+    <div class="modal-header">
+      <div class="icon-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <path d="M14 2v6h6"></path>
+        </svg>
+      </div>
+      <h3>Cargar Excel</h3>
+    </div>
+    <p class="modal-sub">Sube el archivo con los datos de Documento, Factura, Nit Proveedor y Nombre Proveedor. Se buscará automáticamente el correo de cada fila usando NIT + Factura.</p>
+
+    <form method="post" action="{% url 'cargar_excel' %}" enctype="multipart/form-data" id="excelForm">
+      {% csrf_token %}
+      <label class="dropzone" id="dropzone" for="archivoExcelInput">
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"></path>
+          <path d="m7 10 5 5 5-5"></path>
+          <path d="M5 21h14"></path>
+        </svg>
+        <p>Arrastra tu archivo aquí</p>
+        <span>o haz clic para seleccionar (.xlsx, .xls)</span>
+        <span class="file-name-preview" id="fileNamePreview"></span>
+      </label>
+      <input type="file" name="archivo_excel" id="archivoExcelInput" accept=".xlsx,.xls" required style="display:none;">
+      <button type="submit" class="btn-accent">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <path d="M7 10l5 5 5-5"></path>
+          <path d="M12 15V3"></path>
+        </svg>
+        Procesar Excel
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL DE BÚSQUEDA (sin botón, se cierra al recargar la página) -->
+<div class="modal-overlay" id="loadingModal">
+  <div class="modal-panel loading-panel">
+    <div class="spinner"></div>
+    <h3>Procesando facturas y renombrando PDFs</h3>
+    <p class="modal-sub" style="margin-bottom:0;">Por favor espere un momento, podría tardar.</p>
+  </div>
+</div>
+
+<!-- MODAL DE CONFIRMACIÓN (descarga del ZIP, se cierra solo a los 1.5s) -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-panel loading-panel">
+    <div class="check-circle">
+      <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    </div>
+    <h3>¡Listo!</h3>
+    <p class="modal-sub" style="margin-bottom:0;">Tu ZIP se está descargando.</p>
+  </div>
+</div>
+
+<script>
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('archivoExcelInput');
+  const preview = document.getElementById('fileNamePreview');
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length){
+      preview.textContent = fileInput.files[0].name;
+      preview.style.display = 'block';
+    }
+  });
+
+  ['dragenter','dragover'].forEach(evt=>{
+    dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    });
+  });
+  ['dragleave','drop'].forEach(evt=>{
+    dropzone.addEventListener(evt, e=>{
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+    });
+  });
+  dropzone.addEventListener('drop', e=>{
+    if (e.dataTransfer.files.length){
+      fileInput.files = e.dataTransfer.files;
+      preview.textContent = e.dataTransfer.files[0].name;
+      preview.style.display = 'block';
+    }
+  });
+
+  // Si el servidor recarga la página con filas ya cargadas, cerramos el modal automáticamente
+  {% if filas %}
+  document.getElementById('excelModal').classList.remove('active');
+  {% endif %}
+
+  // Cerrar modal haciendo clic fuera del panel
+  document.getElementById('excelModal').addEventListener('click', function(e){
+    if (e.target === this) this.classList.remove('active');
+  });
+
+  /* ---------- MODAL DE BÚSQUEDA (cargar excel) ---------- */
+  const loadingModal = document.getElementById('loadingModal');
+
+  document.getElementById('excelForm').addEventListener('submit', function(e){
+    if (!fileInput.files.length){
+      return;
+    }
+    document.getElementById('excelModal').classList.remove('active');
+    loadingModal.classList.add('active');
+  });
+
+  /* ---------- MODAL DE CONFIRMACIÓN (generar zip) ---------- */
+  const confirmModal = document.getElementById('confirmModal');
+  const zipForm = document.getElementById('zipForm');
+
+  if (zipForm){
+    zipForm.addEventListener('submit', function(e){
+      confirmModal.classList.add('active');
+      setTimeout(function(){
+        confirmModal.classList.remove('active');
+      }, 1500);
+    });
+  }
+</script>
+
+</body>
+</html>

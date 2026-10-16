@@ -1,12 +1,13 @@
 import base64
 import io
+import re
 import zipfile
 import time
 import requests
 
-TENANT = "90167654-ed08-4e3d-85e7-2724f8597ccf"
-CLIENT = "fb9bf20b-5e41-4cdc-b737-29455a775bbb"
-SECRET = "fRF8Q~w8x~Fka4wRnwO_2rtsm8D.lCmgzr2YKb2Q"
+TENANT = "a104dec4-8857-4cf3-b96c-53796c1dab1e"
+CLIENT = "945b1b53-72a6-42d8-8cd5-a4a6efa4c162"
+SECRET = "h1e8Q~elYjZDpyloye~-H2DofcDJtZv3pSIU8ba."
 
 # El buzón donde llegan las facturas (cuenta compartida o de un usuario específico)
 MAILBOX = "servicioalcliente@puntomedical.com.co"  # <-- ajusta esto
@@ -112,6 +113,96 @@ def buscar_pdf_por_asunto(asunto):
             return pdf_bytes, pdf_nombre, None
 
     error = "No se encontró ningún PDF entre los adjuntos (ni directo ni dentro de un ZIP)."
+    if errores:
+        error += " Detalles: " + "; ".join(errores[:5])
+    return None, None, error
+
+
+def _listar_mensajes_por_nit(nit, max_mensajes=300):
+    """
+    Busca mensajes cuyo asunto contenga el NIT como token (los asuntos de
+    facturas tienen formato NIT;PROVEEDOR;PREFIJO+FACTURA;...).
+    Pagina resultados hasta max_mensajes.
+    """
+    url = f"{GRAPH_BASE}/users/{MAILBOX}/messages"
+    params = {
+        "$search": f'"subject:{nit}"',
+        "$top": 100,
+        "$select": "id,subject,hasAttachments,receivedDateTime",
+    }
+    headers = _headers()
+    headers["ConsistencyLevel"] = "eventual"
+
+    todos = []
+    resp = requests.get(url, headers=headers, params=params, timeout=60)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Error buscando mensajes por NIT: {resp.status_code} {resp.text}")
+
+    data = resp.json()
+    todos.extend(data.get("value", []))
+    next_link = data.get("@odata.nextLink")
+
+    while next_link and len(todos) < max_mensajes:
+        resp = requests.get(next_link, headers=headers, timeout=60)
+        if resp.status_code != 200:
+            break
+        data = resp.json()
+        todos.extend(data.get("value", []))
+        next_link = data.get("@odata.nextLink")
+
+    todos = todos[:max_mensajes]
+    todos.sort(key=lambda m: m.get("receivedDateTime", ""), reverse=True)
+    return todos
+
+
+def _asunto_contiene_factura(asunto, facturas):
+    """
+    Verifica si el asunto contiene alguno de los numeros de factura como
+    numero completo (limitado por digitos), con o sin prefijo de letras.
+    Ej: 'AXBC137396' coincide con '137396'; 'MP704166' coincide con '704166'.
+    """
+    if not asunto:
+        return False
+    for f in facturas:
+        if not f:
+            continue
+        if re.search(rf"(?<!\d){re.escape(f)}(?!\d)", asunto, re.IGNORECASE):
+            return True
+    return False
+
+
+def buscar_pdf_por_nit_y_factura(nit, facturas):
+    """
+    Estrategia alternativa: busca correos del proveedor por NIT y filtra
+    localmente por numero de factura (maneja prefijos tipo AXBC, FE, MP, etc.).
+    Devuelve (pdf_bytes, pdf_nombre, error).
+    """
+    if not nit:
+        return None, None, "NIT vacio, no se pudo buscar por proveedor."
+
+    try:
+        mensajes = _listar_mensajes_por_nit(nit)
+    except Exception as e:
+        return None, None, str(e)
+
+    candidatos = [m for m in mensajes if m.get("hasAttachments") and _asunto_contiene_factura(m.get("subject", ""), facturas)]
+
+    if not candidatos:
+        return None, None, f"Se buscaron {len(mensajes)} correos del NIT {nit} y ninguno tiene la factura en el asunto."
+
+    errores = []
+    for msg in candidatos:
+        try:
+            adjuntos = _obtener_adjuntos(msg["id"])
+        except Exception as e:
+            errores.append(f"mensaje {msg['id']}: {e}")
+            continue
+
+        pdf_bytes, pdf_nombre = _extraer_pdf_de_adjuntos(adjuntos, errores)
+        if pdf_bytes is not None:
+            return pdf_bytes, pdf_nombre, None
+
+    error = "Correo encontrado pero sin PDF en adjuntos (ni directo ni dentro de un ZIP)."
     if errores:
         error += " Detalles: " + "; ".join(errores[:5])
     return None, None, error

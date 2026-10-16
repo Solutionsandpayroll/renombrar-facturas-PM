@@ -7,6 +7,7 @@ from openpyxl import Workbook
 from django.http import HttpResponse
 from django.shortcuts import render
 from .graph import buscar_pdf_por_asunto as _buscar_pdf_por_asunto
+from .graph import buscar_pdf_por_nit_y_factura as _buscar_pdf_por_nit_y_factura
 
 
 def _solo_digitos(valor):
@@ -86,12 +87,14 @@ def cargar_excel(request):
             for f in filas_raw:
                 nit_digitos = _solo_digitos(f["nit_proveedor"])
                 factura_digitos = _solo_digitos(f["factura"])
+                factura_original = f["factura"].strip()
 
                 asunto_usado = None
                 pdf_bytes, pdf_nombre, err_busqueda = (None, None, None)
 
-                if factura_digitos and factura_digitos in cache_por_factura:
-                    resultado_cacheado = cache_por_factura[factura_digitos]
+                cache_key = f"{nit_digitos}_{factura_digitos}"
+                if nit_digitos and factura_digitos and cache_key in cache_por_factura:
+                    resultado_cacheado = cache_por_factura[cache_key]
                     asunto_usado = resultado_cacheado["asunto_usado"]
                     pdf_bytes = resultado_cacheado["pdf_bytes"]
                     pdf_nombre = resultado_cacheado["pdf_nombre"]
@@ -100,6 +103,8 @@ def cargar_excel(request):
                     intentos = []
                     if factura_digitos:
                         intentos.append(f"FEVD{factura_digitos}")
+                        if factura_original != factura_digitos:
+                            intentos.append(factura_original)
                         intentos.append(factura_digitos)
 
                     if not intentos:
@@ -114,10 +119,22 @@ def cargar_excel(request):
                                 break
                             errores_intentos.append(f"'{criterio}': {err_intento}")
                         else:
-                            err_busqueda = "Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
+                            facturas_a_probar = [f for f in (factura_original, factura_digitos) if f]
+                            if nit_digitos and facturas_a_probar:
+                                pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_nit_y_factura(
+                                    nit_digitos, facturas_a_probar
+                                )
+                                if pdf_bytes is not None:
+                                    asunto_usado = f"NIT:{nit_digitos}"
+                                    err_busqueda = None
+                                else:
+                                    err_busqueda = ("Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
+                                                    + f" | Búsqueda por NIT: {err_intento}")
+                            else:
+                                err_busqueda = "Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
 
-                    if factura_digitos:
-                        cache_por_factura[factura_digitos] = {
+                    if nit_digitos and factura_digitos:
+                        cache_por_factura[cache_key] = {
                             "asunto_usado": asunto_usado,
                             "pdf_bytes": pdf_bytes,
                             "pdf_nombre": pdf_nombre,

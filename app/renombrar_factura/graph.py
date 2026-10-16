@@ -1,16 +1,38 @@
 import base64
 import io
+import os
 import re
 import zipfile
 import time
+from pathlib import Path
 import requests
 
-TENANT = "a104dec4-8857-4cf3-b96c-53796c1dab1e"
-CLIENT = "945b1b53-72a6-42d8-8cd5-a4a6efa4c162"
-SECRET = "h1e8Q~elYjZDpyloye~-H2DofcDJtZv3pSIU8ba."
+
+def _cargar_env_local():
+    """Carga un archivo .env (KEY=VALUE) desde la raiz del proyecto o de app/,
+    sin dependencias externas. No pisa variables ya definidas en el entorno."""
+    candidatos = [
+        Path(__file__).resolve().parent.parent.parent / ".env",  # raiz del repo
+        Path(__file__).resolve().parent.parent / ".env",          # carpeta app/
+    ]
+    for env_file in candidatos:
+        if env_file.exists():
+            for linea in env_file.read_text(encoding="utf-8").splitlines():
+                linea = linea.strip()
+                if not linea or linea.startswith("#") or "=" not in linea:
+                    continue
+                clave, valor = linea.split("=", 1)
+                os.environ.setdefault(clave.strip(), valor.strip())
+
+
+_cargar_env_local()
+
+TENANT = os.environ.get("GRAPH_TENANT_ID", "")
+CLIENT = os.environ.get("GRAPH_CLIENT_ID", "")
+SECRET = os.environ.get("GRAPH_CLIENT_SECRET", "")
 
 # El buzón donde llegan las facturas (cuenta compartida o de un usuario específico)
-MAILBOX = "servicioalcliente@puntomedical.com.co"  # <-- ajusta esto
+MAILBOX = os.environ.get("GRAPH_MAILBOX", "")
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -20,6 +42,13 @@ _token_cache = {"token": None, "expira": 0}
 
 def _obtener_token():
     """Devuelve un token válido, reutilizando el cacheado si no ha expirado."""
+    if not (TENANT and CLIENT and SECRET and MAILBOX):
+        raise RuntimeError(
+            "Faltan credenciales de Microsoft Graph. Configure las variables "
+            "GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET y GRAPH_MAILBOX "
+            "(por ejemplo copiando .env.example a .env)."
+        )
+
     ahora = time.time()
     if _token_cache["token"] and ahora < _token_cache["expira"] - 60:
         return _token_cache["token"]

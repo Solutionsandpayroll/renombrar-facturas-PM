@@ -104,10 +104,17 @@ def cargar_excel(request):
                 return render(request, "buscar_adjuntos.html", {"error": error, **_contexto_sesion(request)})
 
             _limpiar_temporal()
+
+            unicos = {}
+            for f in filas_raw:
+                key = f"{_solo_digitos(f['nit_proveedor'])}_{_solo_digitos(f['factura'])}"
+                if key not in unicos:
+                    unicos[key] = f
+
             cache_por_factura = {}
 
-            filas_final = []
-            for f in filas_raw:
+            encontrados = {}
+            for key, f in unicos.items():
                 nit_digitos = _solo_digitos(f["nit_proveedor"])
                 factura_digitos = _solo_digitos(f["factura"])
                 factura_original = f["factura"].strip()
@@ -115,75 +122,71 @@ def cargar_excel(request):
                 asunto_usado = None
                 pdf_path, pdf_nombre, err_busqueda = (None, None, None)
 
-                cache_key = f"{nit_digitos}_{factura_digitos}"
-                if nit_digitos and factura_digitos and cache_key in cache_por_factura:
-                    resultado_cacheado = cache_por_factura[cache_key]
-                    asunto_usado = resultado_cacheado["asunto_usado"]
-                    pdf_path = resultado_cacheado["pdf_path"]
-                    pdf_nombre = resultado_cacheado["pdf_nombre"]
-                    err_busqueda = resultado_cacheado["err_busqueda"]
+                pdf_bytes = None
+                intentos = []
+                if factura_digitos:
+                    intentos.append(f"FEVD{factura_digitos}")
+                    if factura_original != factura_digitos:
+                        intentos.append(factura_original)
+                    intentos.append(factura_digitos)
+
+                if not intentos:
+                    err_busqueda = "NIT y Factura vacíos, no se pudo armar ningún criterio de búsqueda."
                 else:
-                    pdf_bytes = None
-                    intentos = []
-                    if factura_digitos:
-                        intentos.append(f"FEVD{factura_digitos}")
-                        if factura_original != factura_digitos:
-                            intentos.append(factura_original)
-                        intentos.append(factura_digitos)
-
-                    if not intentos:
-                        err_busqueda = "NIT y Factura vacíos, no se pudo armar ningún criterio de búsqueda."
+                    errores_intentos = []
+                    for criterio in intentos:
+                        pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_asunto(criterio)
+                        asunto_usado = criterio
+                        if pdf_bytes is not None:
+                            err_busqueda = None
+                            break
+                        errores_intentos.append(f"'{criterio}': {err_intento}")
                     else:
-                        errores_intentos = []
-                        for criterio in intentos:
-                            pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_asunto(criterio)
-                            asunto_usado = criterio
+                        facturas_a_probar = [x for x in (factura_original, factura_digitos) if x]
+                        if nit_digitos and facturas_a_probar:
+                            pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_nit_y_factura(
+                                nit_digitos, facturas_a_probar
+                            )
                             if pdf_bytes is not None:
+                                asunto_usado = f"NIT:{nit_digitos}"
                                 err_busqueda = None
-                                break
-                            errores_intentos.append(f"'{criterio}': {err_intento}")
-                        else:
-                            facturas_a_probar = [f for f in (factura_original, factura_digitos) if f]
-                            if nit_digitos and facturas_a_probar:
-                                pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_nit_y_factura(
-                                    nit_digitos, facturas_a_probar
-                                )
-                                if pdf_bytes is not None:
-                                    asunto_usado = f"NIT:{nit_digitos}"
-                                    err_busqueda = None
-                                else:
-                                    err_busqueda = ("Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
-                                                    + f" | Búsqueda por NIT: {err_intento}")
                             else:
-                                err_busqueda = "Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
+                                err_busqueda = ("Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
+                                                + f" | Búsqueda por NIT: {err_intento}")
+                        else:
+                            err_busqueda = "Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
 
-                    if pdf_bytes is not None:
-                        ruta_pdf = _ruta_pdf_temporal(pdf_nombre, len(filas_final))
-                        with open(ruta_pdf, "wb") as tmp:
-                            tmp.write(pdf_bytes)
-                        pdf_path = ruta_pdf
-                        pdf_bytes = None
+                if pdf_bytes is not None:
+                    ruta_pdf = _ruta_pdf_temporal(pdf_nombre, len(encontrados))
+                    with open(ruta_pdf, "wb") as tmp:
+                        tmp.write(pdf_bytes)
+                    pdf_path = ruta_pdf
+                    pdf_bytes = None
 
-                    if nit_digitos and factura_digitos:
-                        cache_por_factura[cache_key] = {
-                            "asunto_usado": asunto_usado,
-                            "pdf_path": pdf_path,
-                            "pdf_nombre": pdf_nombre,
-                            "err_busqueda": err_busqueda,
-                        }
+                encontrados[key] = {
+                    "asunto_usado": asunto_usado,
+                    "pdf_path": pdf_path,
+                    "pdf_nombre": pdf_nombre,
+                    "err_busqueda": err_busqueda,
+                }
+
+            filas_final = []
+            for f in filas_raw:
+                key = f"{_solo_digitos(f['nit_proveedor'])}_{_solo_digitos(f['factura'])}"
+                res = encontrados[key]
 
                 fila_resultado = dict(f)
-                fila_resultado["asunto_busqueda"] = asunto_usado or ""
-                if pdf_path is not None:
+                fila_resultado["asunto_busqueda"] = res["asunto_usado"] or ""
+                if res["pdf_path"] is not None:
                     fila_resultado["pdf_encontrado"] = True
-                    fila_resultado["pdf_path"] = pdf_path
-                    fila_resultado["nombre_adjunto"] = pdf_nombre
+                    fila_resultado["pdf_path"] = res["pdf_path"]
+                    fila_resultado["nombre_adjunto"] = res["pdf_nombre"]
                     fila_resultado["error_busqueda"] = None
                 else:
                     fila_resultado["pdf_encontrado"] = False
                     fila_resultado["pdf_path"] = None
                     fila_resultado["nombre_adjunto"] = None
-                    fila_resultado["error_busqueda"] = err_busqueda
+                    fila_resultado["error_busqueda"] = res["err_busqueda"]
 
                 filas_final.append(fila_resultado)
 

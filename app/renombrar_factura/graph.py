@@ -147,7 +147,7 @@ def buscar_pdf_por_asunto(asunto):
     return None, None, error
 
 
-def _listar_mensajes_por_nit(nit, max_mensajes=300):
+def _listar_mensajes_por_nit(nit, max_mensajes=30):
     """
     Busca mensajes cuyo asunto contenga el NIT como token (los asuntos de
     facturas tienen formato NIT;PROVEEDOR;PREFIJO+FACTURA;...).

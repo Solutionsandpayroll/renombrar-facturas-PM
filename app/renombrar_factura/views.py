@@ -1,6 +1,8 @@
-import base64
 import io
+import os
 import re
+import shutil
+import tempfile
 import zipfile
 import openpyxl
 from openpyxl import Workbook
@@ -8,6 +10,26 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from .graph import buscar_pdf_por_asunto as _buscar_pdf_por_asunto
 from .graph import buscar_pdf_por_nit_y_factura as _buscar_pdf_por_nit_y_factura
+
+
+_DIR_TEMPORAL = os.path.join(tempfile.gettempdir(), "renombrar_facturas")
+
+
+def _asegurar_dir_temporal():
+    os.makedirs(_DIR_TEMPORAL, exist_ok=True)
+    return _DIR_TEMPORAL
+
+
+def _limpiar_temporal():
+    if os.path.isdir(_DIR_TEMPORAL):
+        shutil.rmtree(_DIR_TEMPORAL, ignore_errors=True)
+
+
+def _ruta_pdf_temporal(nombre, indice):
+    """Genera una ruta única en el directorio temporal para un PDF."""
+    _asegurar_dir_temporal()
+    safe = re.sub(r"[^0-9a-zA-Z._-]", "_", nombre)[:80]
+    return os.path.join(_DIR_TEMPORAL, f"{indice}_{safe}")
 
 
 def _solo_digitos(valor):
@@ -81,6 +103,7 @@ def cargar_excel(request):
                 error = "No se encontraron datos a partir de la fila 6."
                 return render(request, "buscar_adjuntos.html", {"error": error, **_contexto_sesion(request)})
 
+            _limpiar_temporal()
             cache_por_factura = {}
 
             filas_final = []
@@ -90,16 +113,17 @@ def cargar_excel(request):
                 factura_original = f["factura"].strip()
 
                 asunto_usado = None
-                pdf_bytes, pdf_nombre, err_busqueda = (None, None, None)
+                pdf_path, pdf_nombre, err_busqueda = (None, None, None)
 
                 cache_key = f"{nit_digitos}_{factura_digitos}"
                 if nit_digitos and factura_digitos and cache_key in cache_por_factura:
                     resultado_cacheado = cache_por_factura[cache_key]
                     asunto_usado = resultado_cacheado["asunto_usado"]
-                    pdf_bytes = resultado_cacheado["pdf_bytes"]
+                    pdf_path = resultado_cacheado["pdf_path"]
                     pdf_nombre = resultado_cacheado["pdf_nombre"]
                     err_busqueda = resultado_cacheado["err_busqueda"]
                 else:
+                    pdf_bytes = None
                     intentos = []
                     if factura_digitos:
                         intentos.append(f"FEVD{factura_digitos}")
@@ -133,24 +157,31 @@ def cargar_excel(request):
                             else:
                                 err_busqueda = "Sin coincidencias. Intentos: " + " | ".join(errores_intentos)
 
+                    if pdf_bytes is not None:
+                        ruta_pdf = _ruta_pdf_temporal(pdf_nombre, len(filas_final))
+                        with open(ruta_pdf, "wb") as tmp:
+                            tmp.write(pdf_bytes)
+                        pdf_path = ruta_pdf
+                        pdf_bytes = None
+
                     if nit_digitos and factura_digitos:
                         cache_por_factura[cache_key] = {
                             "asunto_usado": asunto_usado,
-                            "pdf_bytes": pdf_bytes,
+                            "pdf_path": pdf_path,
                             "pdf_nombre": pdf_nombre,
                             "err_busqueda": err_busqueda,
                         }
 
                 fila_resultado = dict(f)
                 fila_resultado["asunto_busqueda"] = asunto_usado or ""
-                if pdf_bytes is not None:
+                if pdf_path is not None:
                     fila_resultado["pdf_encontrado"] = True
-                    fila_resultado["pdf_b64"] = base64.b64encode(pdf_bytes).decode("utf-8")
+                    fila_resultado["pdf_path"] = pdf_path
                     fila_resultado["nombre_adjunto"] = pdf_nombre
                     fila_resultado["error_busqueda"] = None
                 else:
                     fila_resultado["pdf_encontrado"] = False
-                    fila_resultado["pdf_b64"] = None
+                    fila_resultado["pdf_path"] = None
                     fila_resultado["nombre_adjunto"] = None
                     fila_resultado["error_busqueda"] = err_busqueda
 
@@ -204,7 +235,8 @@ def generar_reporte_final(request):
                 if not f.get("pdf_encontrado"):
                     continue
 
-                pdf_bytes = base64.b64decode(f["pdf_b64"])
+                with open(f["pdf_path"], "rb") as src:
+                    pdf_bytes = src.read()
 
                 nombre_pdf = f"{f['documento']}-{f['nombre_proveedor']}-{f['factura']}.pdf"
                 nombre_pdf = nombre_pdf.replace("/", "-").replace("\\", "-")
@@ -223,6 +255,7 @@ def generar_reporte_final(request):
         zip_buffer.seek(0)
 
         request.session.pop("filas_excel", None)
+        _limpiar_temporal()
 
         response_http = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
         response_http["Content-Disposition"] = 'attachment; filename="resultado.zip"'

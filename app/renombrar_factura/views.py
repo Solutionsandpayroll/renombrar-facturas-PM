@@ -38,6 +38,47 @@ def _solo_digitos(valor):
     return re.sub(r"\D", "", str(valor))
 
 
+def _texto_celda(valor):
+    """Convierte el valor de una celda a texto limpio, evitando el '.0'
+    en numeros enteros guardados como float."""
+    if valor is None:
+        return ""
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor).strip()
+
+
+def _detectar_columnas(ws):
+    """
+    Busca en las primeras filas los encabezados por nombre y devuelve las
+    columnas de: documento, factura, nit, nombre. Soporta ambas plantillas:
+      viejas: Documento(1) Factura(2) ... Nit Proveedor(27) Nombre Proveedor(28)
+      nuevas: Documento(1) Fecha(2) Nro Factura(3) ... Nit Proveedor(5) Nombre Contable(6)
+    Si no los encuentra, devuelve None para usar la plantilla vieja por defecto.
+    """
+    objetivos = {
+        "documento": {"documento"},
+        "factura": {"factura", "nro factura", "no. factura", "numero factura", "número factura"},
+        "nit": {"nit proveedor", "nit"},
+        "nombre": {"nombre proveedor", "nombre contable"},
+    }
+
+    for fila in range(1, 11):
+        cols = {}
+        for c in range(1, min(ws.max_column, 60) + 1):
+            v = ws.cell(row=fila, column=c).value
+            if v is None:
+                continue
+            txt = str(v).strip().lower()
+            for clave, nombres in objetivos.items():
+                if clave not in cols and txt in nombres:
+                    cols[clave] = c
+        if len(cols) == 4:
+            return cols
+
+    return None
+
+
 def _deduplicar_por_factura(filas):
     filas_por_factura = {}
     orden_facturas = []
@@ -79,23 +120,27 @@ def cargar_excel(request):
             wb = openpyxl.load_workbook(archivo, data_only=True)
             ws = wb.active
 
+            columnas = _detectar_columnas(ws)
+            if columnas is None:
+                columnas = {"documento": 1, "factura": 2, "nit": 27, "nombre": 28}
+
             filas_raw = []
             fila = 6
 
             while True:
-                documento = ws.cell(row=fila, column=1).value
-                factura = ws.cell(row=fila, column=2).value
-                nit_prov = ws.cell(row=fila, column=27).value
-                nombre_prov = ws.cell(row=fila, column=28).value
+                documento = ws.cell(row=fila, column=columnas["documento"]).value
+                factura = ws.cell(row=fila, column=columnas["factura"]).value
+                nit_prov = ws.cell(row=fila, column=columnas["nit"]).value
+                nombre_prov = ws.cell(row=fila, column=columnas["nombre"]).value
 
                 if documento in (None, ""):
                     break
 
                 filas_raw.append({
-                    "documento": str(documento).strip(),
-                    "factura": str(factura).strip() if factura is not None else "",
-                    "nit_proveedor": str(nit_prov).strip() if nit_prov is not None else "",
-                    "nombre_proveedor": str(nombre_prov).strip() if nombre_prov is not None else "",
+                    "documento": _texto_celda(documento),
+                    "factura": _texto_celda(factura),
+                    "nit_proveedor": _texto_celda(nit_prov),
+                    "nombre_proveedor": _texto_celda(nombre_prov),
                 })
                 fila += 1
 
@@ -196,7 +241,15 @@ def cargar_excel(request):
                 error = "Se cargó el Excel, pero no se encontró el correo/PDF para ninguna fila. Revisa el detalle por fila en la tabla."
 
         except Exception as e:
-            error = f"Error al leer el Excel: {e}"
+            if "not a zip file" in str(e).lower():
+                error = (
+                    "El archivo parece estar en formato antiguo (.xls). "
+                    "Verifica que el archivo Excel termine en .xlsx: si termina en .xls, "
+                    "ábrela en Excel, usa \"Guardar como\" y elige el formato .xlsx, "
+                    "luego vuelve a subirla."
+                )
+            else:
+                error = f"Error al leer el Excel: {e}"
 
     return render(request, "buscar_adjuntos.html", {"error": error, **_contexto_sesion(request)})
 

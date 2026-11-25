@@ -4,8 +4,10 @@ import re
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime, timedelta
 import openpyxl
 from openpyxl import Workbook
+from openpyxl.utils.datetime import from_excel
 from django.http import HttpResponse
 from django.shortcuts import render
 from .graph import buscar_pdf_por_asunto as _buscar_pdf_por_asunto
@@ -79,6 +81,49 @@ def _detectar_columnas(ws):
     return None
 
 
+def _a_datetime(valor):
+    """Convierte el valor de una celda a datetime (acepta datetime, serial de
+    Excel o texto en formatos comunes)."""
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor
+    if isinstance(valor, (int, float)):
+        try:
+            return from_excel(float(valor))
+        except Exception:
+            return None
+    txt = str(valor).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(txt, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _rango_fechas_excel(ws):
+    """
+    Busca en las primeras filas el patron 'De <fecha> ... Hasta <fecha>'
+    (fila 4 tipica de los reportes de compras). Devuelve (desde, hasta)
+    o (None, None) si no aparece.
+    """
+    for fila in range(1, 9):
+        desde = hasta = None
+        for c in range(1, min(ws.max_column, 10) + 1):
+            v = ws.cell(row=fila, column=c).value
+            if v is None:
+                continue
+            txt = str(v).strip().lower()
+            if txt == "de":
+                desde = _a_datetime(ws.cell(row=fila, column=c + 1).value)
+            elif txt == "hasta":
+                hasta = _a_datetime(ws.cell(row=fila, column=c + 1).value)
+        if desde and hasta:
+            return desde, hasta
+    return None, None
+
+
 def _deduplicar_por_factura(filas):
     filas_por_factura = {}
     orden_facturas = []
@@ -123,6 +168,13 @@ def cargar_excel(request):
             columnas = _detectar_columnas(ws)
             if columnas is None:
                 columnas = {"documento": 1, "factura": 2, "nit": 27, "nombre": 28}
+
+            desde, hasta = _rango_fechas_excel(ws)
+            ventana_fechas = None
+            if desde and hasta:
+                # Colchon: 90 dias hacia atras (las facturas suelen emitirse antes
+                # de que la compra se registre) y 30 dias hacia adelante.
+                ventana_fechas = (desde - timedelta(days=90), hasta + timedelta(days=30))
 
             filas_raw = []
             fila = 6
@@ -174,6 +226,9 @@ def cargar_excel(request):
                     if factura_original != factura_digitos:
                         intentos.append(factura_original)
                     intentos.append(factura_digitos)
+                    sin_ceros = factura_digitos.lstrip("0")
+                    if sin_ceros and sin_ceros != factura_digitos:
+                        intentos.append(sin_ceros)
 
                 if not intentos:
                     err_busqueda = "NIT y Factura vacíos, no se pudo armar ningún criterio de búsqueda."
@@ -187,10 +242,10 @@ def cargar_excel(request):
                             break
                         errores_intentos.append(f"'{criterio}': {err_intento}")
                     else:
-                        facturas_a_probar = [x for x in (factura_original, factura_digitos) if x]
+                        facturas_a_probar = [x for x in (factura_original, factura_digitos, factura_digitos.lstrip("0")) if x]
                         if nit_digitos and facturas_a_probar:
                             pdf_bytes, pdf_nombre, err_intento = _buscar_pdf_por_nit_y_factura(
-                                nit_digitos, facturas_a_probar
+                                nit_digitos, facturas_a_probar, ventana_fechas=ventana_fechas
                             )
                             if pdf_bytes is not None:
                                 asunto_usado = f"NIT:{nit_digitos}"

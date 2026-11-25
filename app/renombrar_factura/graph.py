@@ -147,43 +147,6 @@ def buscar_pdf_por_asunto(asunto):
     return None, None, error
 
 
-def _listar_mensajes_por_nit(nit, max_mensajes=30):
-    """
-    Busca mensajes cuyo asunto contenga el NIT como token (los asuntos de
-    facturas tienen formato NIT;PROVEEDOR;PREFIJO+FACTURA;...).
-    Pagina resultados hasta max_mensajes.
-    """
-    url = f"{GRAPH_BASE}/users/{MAILBOX}/messages"
-    params = {
-        "$search": f'"subject:{nit}"',
-        "$top": 100,
-        "$select": "id,subject,hasAttachments,receivedDateTime",
-    }
-    headers = _headers()
-    headers["ConsistencyLevel"] = "eventual"
-
-    todos = []
-    resp = requests.get(url, headers=headers, params=params, timeout=60)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Error buscando mensajes por NIT: {resp.status_code} {resp.text}")
-
-    data = resp.json()
-    todos.extend(data.get("value", []))
-    next_link = data.get("@odata.nextLink")
-
-    while next_link and len(todos) < max_mensajes:
-        resp = requests.get(next_link, headers=headers, timeout=60)
-        if resp.status_code != 200:
-            break
-        data = resp.json()
-        todos.extend(data.get("value", []))
-        next_link = data.get("@odata.nextLink")
-
-    todos = todos[:max_mensajes]
-    todos.sort(key=lambda m: m.get("receivedDateTime", ""), reverse=True)
-    return todos
-
-
 def _asunto_contiene_factura(asunto, facturas):
     """
     Verifica si el asunto contiene alguno de los numeros de factura como
@@ -200,36 +163,107 @@ def _asunto_contiene_factura(asunto, facturas):
     return False
 
 
-def buscar_pdf_por_nit_y_factura(nit, facturas):
+def _escanear_mensajes_nit(criterio_search, facturas, max_mensajes=300, errores=None):
+    """
+    Pagina mensajes que coinciden con el criterio de busqueda dado y devuelve
+    el primer PDF cuyo asunto contenga alguna de las facturas.
+    Devuelve (pdf_bytes, pdf_nombre, vistos, candidatos, error).
+    """
+    if errores is None:
+        errores = []
+
+    url = f"{GRAPH_BASE}/users/{MAILBOX}/messages"
+    params = {
+        "$search": criterio_search,
+        "$top": 100,
+        "$select": "id,subject,hasAttachments,receivedDateTime",
+    }
+    headers = _headers()
+    headers["ConsistencyLevel"] = "eventual"
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=60)
+    except Exception as e:
+        return None, None, 0, 0, str(e)
+
+    if resp.status_code != 200:
+        return None, None, 0, 0, f"Error buscando mensajes por NIT: {resp.status_code} {resp.text}"
+
+    data = resp.json()
+    vistos = 0
+    candidatos_totales = 0
+
+    while True:
+        pagina = data.get("value", [])
+        vistos += len(pagina)
+
+        candidatos = [
+            m for m in pagina
+            if m.get("hasAttachments") and _asunto_contiene_factura(m.get("subject", ""), facturas)
+        ]
+        candidatos_totales += len(candidatos)
+
+        candidatos.sort(key=lambda m: m.get("receivedDateTime", ""), reverse=True)
+        for msg in candidatos:
+            try:
+                adjuntos = _obtener_adjuntos(msg["id"])
+            except Exception as e:
+                errores.append(f"mensaje {msg['id']}: {e}")
+                continue
+
+            pdf_bytes, pdf_nombre = _extraer_pdf_de_adjuntos(adjuntos, errores)
+            if pdf_bytes is not None:
+                return pdf_bytes, pdf_nombre, vistos, candidatos_totales, None
+
+        next_link = data.get("@odata.nextLink")
+        if not next_link or vistos >= max_mensajes:
+            break
+        try:
+            resp = requests.get(next_link, headers=headers, timeout=60)
+        except Exception as e:
+            return None, None, vistos, candidatos_totales, str(e)
+        if resp.status_code != 200:
+            break
+        data = resp.json()
+
+    return None, None, vistos, candidatos_totales, None
+
+
+def buscar_pdf_por_nit_y_factura(nit, facturas, ventana_fechas=None, max_mensajes=300):
     """
     Estrategia alternativa: busca correos del proveedor por NIT y filtra
     localmente por numero de factura (maneja prefijos tipo AXBC, FE, MP, etc.).
+
+    ventana_fechas: opcional (datetime_desde, datetime_hasta). Si se informa,
+    primero se busca solo en ese rango (mas rapido); si no hay resultado,
+    se reintenta en todo el historial para no perder correos fuera de ventana.
+
     Devuelve (pdf_bytes, pdf_nombre, error).
     """
     if not nit:
         return None, None, "NIT vacio, no se pudo buscar por proveedor."
 
-    try:
-        mensajes = _listar_mensajes_por_nit(nit)
-    except Exception as e:
-        return None, None, str(e)
-
-    candidatos = [m for m in mensajes if m.get("hasAttachments") and _asunto_contiene_factura(m.get("subject", ""), facturas)]
-
-    if not candidatos:
-        return None, None, f"Se buscaron {len(mensajes)} correos del NIT {nit} y ninguno tiene la factura en el asunto."
-
     errores = []
-    for msg in candidatos:
-        try:
-            adjuntos = _obtener_adjuntos(msg["id"])
-        except Exception as e:
-            errores.append(f"mensaje {msg['id']}: {e}")
-            continue
 
-        pdf_bytes, pdf_nombre = _extraer_pdf_de_adjuntos(adjuntos, errores)
-        if pdf_bytes is not None:
-            return pdf_bytes, pdf_nombre, None
+    if ventana_fechas and all(ventana_fechas):
+        desde, hasta = ventana_fechas
+        d = desde.strftime("%Y-%m-%dT%H:%M:%SZ")
+        h = hasta.strftime("%Y-%m-%dT%H:%M:%SZ")
+        criterio = f'"subject:{nit} AND received:{d}..{h}"'
+        pdf, nombre, _, _, err = _escanear_mensajes_nit(criterio, facturas, max_mensajes, errores)
+        if err:
+            return None, None, err
+        if pdf is not None:
+            return pdf, nombre, None
+
+    pdf, nombre, vistos, cand, err = _escanear_mensajes_nit(f'"subject:{nit}"', facturas, max_mensajes, errores)
+    if err:
+        return None, None, err
+    if pdf is not None:
+        return pdf, nombre, None
+
+    if cand == 0:
+        return None, None, f"Se revisaron {vistos} correos del NIT {nit} y ninguno tiene la factura en el asunto."
 
     error = "Correo encontrado pero sin PDF en adjuntos (ni directo ni dentro de un ZIP)."
     if errores:
